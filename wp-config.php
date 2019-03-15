@@ -1,8 +1,8 @@
 <?php
 // ** MySQL settings ** //
 define('DB_NAME', 'wpdb');    // The name of the database
-define('DB_USER', 'root');     // Your MySQL username
-define('DB_PASSWORD', '12345'); // ...and password
+define('DB_USER', 'dbuser');     // Your MySQL username
+define('DB_PASSWORD', 'adfasdsiV@U6P5$Gkb'); // ...and password
 define('DB_HOST', 'localhost');    // 99% chance you won't need to change this value
 define('DB_CHARSET', 'utf8');
 define('DB_COLLATE', '');
