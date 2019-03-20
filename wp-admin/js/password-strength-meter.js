@@ -1,80 +1,80 @@
-// Password strength meter
-// This jQuery plugin is written by firas kassem [2007.04.05]
-// Firas Kassem  phiras.wordpress.com || phiras at gmail {dot} com
-// for more information : http://phiras.wordpress.com/2007/04/08/password-strength-meter-a-jquery-plugin/
+/* global zxcvbn */
+window.wp = window.wp || {};
 
-var shortPass = pwsL10n.short
-var badPass = pwsL10n.bad
-var goodPass = pwsL10n.good
-var strongPass = pwsL10n.strong
+var passwordStrength;
+(function($){
+	wp.passwordStrength = {
+		/**
+		 * Determine the strength of a given password
+		 *
+		 * @param string password1 The password
+		 * @param array blacklist An array of words that will lower the entropy of the password
+		 * @param string password2 The confirmed password
+		 */
+		meter : function( password1, blacklist, password2 ) {
+			if ( ! $.isArray( blacklist ) )
+				blacklist = [ blacklist.toString() ];
 
+			if (password1 != password2 && password2 && password2.length > 0)
+				return 5;
 
-function passwordStrength(password,username) {
-    score = 0
+			if ( 'undefined' === typeof window.zxcvbn ) {
+				// Password strength unknown.
+				return -1;
+			}
 
-    //password < 4
-    if (password.length < 4 ) { return shortPass }
+			var result = zxcvbn( password1, blacklist );
+			return result.score;
+		},
 
-    //password == username
-    if (password.toLowerCase()==username.toLowerCase()) return badPass
+		/**
+		 * Builds an array of data that should be penalized, because it would lower the entropy of a password if it were used
+		 *
+		 * @return array The array of data to be blacklisted
+		 */
+		userInputBlacklist : function() {
+			var i, userInputFieldsLength, rawValuesLength, currentField,
+				rawValues       = [],
+				blacklist       = [],
+				userInputFields = [ 'user_login', 'first_name', 'last_name', 'nickname', 'display_name', 'email', 'url', 'description', 'weblog_title', 'admin_email' ];
 
-    //password length
-    score += password.length * 4
-    score += ( checkRepetition(1,password).length - password.length ) * 1
-    score += ( checkRepetition(2,password).length - password.length ) * 1
-    score += ( checkRepetition(3,password).length - password.length ) * 1
-    score += ( checkRepetition(4,password).length - password.length ) * 1
+			// Collect all the strings we want to blacklist
+			rawValues.push( document.title );
+			rawValues.push( document.URL );
 
-    //password has 3 numbers
-    if (password.match(/(.*[0-9].*[0-9].*[0-9])/))  score += 5
+			userInputFieldsLength = userInputFields.length;
+			for ( i = 0; i < userInputFieldsLength; i++ ) {
+				currentField = $( '#' + userInputFields[ i ] );
 
-    //password has 2 sybols
-    if (password.match(/(.*[!,@,#,$,%,^,&,*,?,_,~].*[!,@,#,$,%,^,&,*,?,_,~])/)) score += 5
+				if ( 0 === currentField.length ) {
+					continue;
+				}
 
-    //password has Upper and Lower chars
-    if (password.match(/([a-z].*[A-Z])|([A-Z].*[a-z])/))  score += 10
+				rawValues.push( currentField[0].defaultValue );
+				rawValues.push( currentField.val() );
+			}
 
-    //password has number and chars
-    if (password.match(/([a-zA-Z])/) && password.match(/([0-9])/))  score += 15
-    //
-    //password has number and symbol
-    if (password.match(/([!,@,#,$,%,^,&,*,?,_,~])/) && password.match(/([0-9])/))  score += 15
+			// Strip out non-alphanumeric characters and convert each word to an individual entry
+			rawValuesLength = rawValues.length;
+			for ( i = 0; i < rawValuesLength; i++ ) {
+				if ( rawValues[ i ] ) {
+					blacklist = blacklist.concat( rawValues[ i ].replace( /\W/g, ' ' ).split( ' ' ) );
+				}
+			}
 
-    //password has char and symbol
-    if (password.match(/([!,@,#,$,%,^,&,*,?,_,~])/) && password.match(/([a-zA-Z])/))  score += 15
+			// Remove empty values, short words, and duplicates. Short words are likely to cause many false positives.
+			blacklist = $.grep( blacklist, function( value, key ) {
+				if ( '' === value || 4 > value.length ) {
+					return false;
+				}
 
-    //password is just a nubers or chars
-    if (password.match(/^\w+$/) || password.match(/^\d+$/) )  score -= 10
+				return $.inArray( value, blacklist ) === key;
+			});
 
-    //verifing 0 < score < 100
-    if ( score < 0 )  score = 0
-    if ( score > 100 )  score = 100
+			return blacklist;
+		}
+	};
 
-    if (score < 34 )  return badPass
-    if (score < 68 )  return goodPass
-    return strongPass
-}
-
-
-// checkRepetition(1,'aaaaaaabcbc')   = 'abcbc'
-// checkRepetition(2,'aaaaaaabcbc')   = 'aabc'
-// checkRepetition(2,'aaaaaaabcdbcd') = 'aabcd'
-
-function checkRepetition(pLen,str) {
-    res = ""
-    for ( i=0; i<str.length ; i++ ) {
-        repeated=true
-        for (j=0;j < pLen && (j+i+pLen) < str.length;j++)
-            repeated=repeated && (str.charAt(j+i)==str.charAt(j+i+pLen))
-        if (j<pLen) repeated=false
-        if (repeated) {
-            i+=pLen-1
-            repeated=false
-        }
-        else {
-            res+=str.charAt(i)
-        }
-    }
-    return res
-}
-
+	// Back-compat.
+	passwordStrength = wp.passwordStrength.meter;
+})(jQuery);

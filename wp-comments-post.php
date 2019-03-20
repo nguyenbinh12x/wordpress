@@ -1,77 +1,63 @@
 <?php
+/**
+ * Handles Comment Post to WordPress and prevents duplicate comment posting.
+ *
+ * @package WordPress
+ */
+
 if ( 'POST' != $_SERVER['REQUEST_METHOD'] ) {
+	$protocol = $_SERVER['SERVER_PROTOCOL'];
+	if ( ! in_array( $protocol, array( 'HTTP/1.1', 'HTTP/2', 'HTTP/2.0' ) ) ) {
+		$protocol = 'HTTP/1.0';
+	}
+
 	header('Allow: POST');
-	header('HTTP/1.1 405 Method Not Allowed');
+	header("$protocol 405 Method Not Allowed");
 	header('Content-Type: text/plain');
 	exit;
 }
-require( dirname(__FILE__) . '/wp-config.php' );
+
+/** Sets up the WordPress Environment. */
+require( dirname(__FILE__) . '/wp-load.php' );
 
 nocache_headers();
 
-$comment_post_ID = (int) $_POST['comment_post_ID'];
-
-$status = $wpdb->get_row("SELECT post_status, comment_status FROM $wpdb->posts WHERE ID = '$comment_post_ID'");
-
-if ( empty($status->comment_status) ) {
-	do_action('comment_id_not_found', $comment_post_ID);
-	exit;
-} elseif ( !comments_open($comment_post_ID) ) {
-	do_action('comment_closed', $comment_post_ID);
-	wp_die( __('Sorry, comments are closed for this item.') );
-} elseif ( in_array($status->post_status, array('draft', 'pending') ) ) {
-	do_action('comment_on_draft', $comment_post_ID);
-	exit;
-}
-
-$comment_author       = trim(strip_tags($_POST['author']));
-$comment_author_email = trim($_POST['email']);
-$comment_author_url   = trim($_POST['url']);
-$comment_content      = trim($_POST['comment']);
-
-// If the user is logged in
-$user = wp_get_current_user();
-if ( $user->ID ) {
-	$comment_author       = $wpdb->escape($user->display_name);
-	$comment_author_email = $wpdb->escape($user->user_email);
-	$comment_author_url   = $wpdb->escape($user->user_url);
-	if ( current_user_can('unfiltered_html') ) {
-		if ( wp_create_nonce('unfiltered-html-comment_' . $comment_post_ID) != $_POST['_wp_unfiltered_html_comment'] ) {
-			kses_remove_filters(); // start with a clean slate
-			kses_init_filters(); // set up the filters
-		}
+$comment = wp_handle_comment_submission( wp_unslash( $_POST ) );
+if ( is_wp_error( $comment ) ) {
+	$data = intval( $comment->get_error_data() );
+	if ( ! empty( $data ) ) {
+		wp_die( '<p>' . $comment->get_error_message() . '</p>', __( 'Comment Submission Failure' ), array( 'response' => $data, 'back_link' => true ) );
+	} else {
+		exit;
 	}
-} else {
-	if ( get_option('comment_registration') )
-		wp_die( __('Sorry, you must be logged in to post a comment.') );
 }
 
-$comment_type = '';
+$user = wp_get_current_user();
+$cookies_consent = ( isset( $_POST['wp-comment-cookies-consent'] ) );
 
-if ( get_option('require_name_email') && !$user->ID ) {
-	if ( 6 > strlen($comment_author_email) || '' == $comment_author )
-		wp_die( __('Error: please fill the required fields (name, email).') );
-	elseif ( !is_email($comment_author_email))
-		wp_die( __('Error: please enter a valid email address.') );
-}
+/**
+ * Perform other actions when comment cookies are set.
+ *
+ * @since 3.4.0
+ * @since 4.9.6 The `$cookies_consent` parameter was added.
+ *
+ * @param WP_Comment $comment         Comment object.
+ * @param WP_User    $user            Comment author's user object. The user may not exist.
+ * @param boolean    $cookies_consent Comment author's consent to store cookies.
+ */
+do_action( 'set_comment_cookies', $comment, $user, $cookies_consent );
 
-if ( '' == $comment_content )
-	wp_die( __('Error: please type a comment.') );
+$location = empty( $_POST['redirect_to'] ) ? get_comment_link( $comment ) : $_POST['redirect_to'] . '#comment-' . $comment->comment_ID;
 
-$commentdata = compact('comment_post_ID', 'comment_author', 'comment_author_email', 'comment_author_url', 'comment_content', 'comment_type', 'user_ID');
+/**
+ * Filters the location URI to send the commenter after posting.
+ *
+ * @since 2.0.5
+ *
+ * @param string     $location The 'redirect_to' URI sent via $_POST.
+ * @param WP_Comment $comment  Comment object.
+ */
+$location = apply_filters( 'comment_post_redirect', $location, $comment );
 
-$comment_id = wp_new_comment( $commentdata );
-
-$comment = get_comment($comment_id);
-if ( !$user->ID ) {
-	setcookie('comment_author_' . COOKIEHASH, $comment->comment_author, time() + 30000000, COOKIEPATH, COOKIE_DOMAIN);
-	setcookie('comment_author_email_' . COOKIEHASH, $comment->comment_author_email, time() + 30000000, COOKIEPATH, COOKIE_DOMAIN);
-	setcookie('comment_author_url_' . COOKIEHASH, clean_url($comment->comment_author_url), time() + 30000000, COOKIEPATH, COOKIE_DOMAIN);
-}
-
-$location = ( empty($_POST['redirect_to']) ? get_permalink($comment_post_ID) : $_POST['redirect_to'] ) . '#comment-' . $comment_id;
-$location = apply_filters('comment_post_redirect', $location, $comment);
-
-wp_redirect($location);
-
-?>
+wp_safe_redirect( $location );
+exit;

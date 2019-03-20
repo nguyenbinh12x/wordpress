@@ -1,471 +1,488 @@
 <?php
 /**
- * Used to setup and fix common variables and include
+ * Used to set up and fix common variables and include
  * the WordPress procedural and class library.
  *
- * You should not have to change this file and allows
- * for some configuration in wp-config.php.
+ * Allows for some configuration in wp-config.php (see default-constants.php)
  *
  * @package WordPress
  */
-
-if ( !defined('WP_MEMORY_LIMIT') )
-	define('WP_MEMORY_LIMIT', '32M');
-
-if ( function_exists('memory_get_usage') && ( (int) @ini_get('memory_limit') < abs(intval(WP_MEMORY_LIMIT)) ) )
-	@ini_set('memory_limit', WP_MEMORY_LIMIT);
-
-
-/**
- * wp_unregister_GLOBALS() - Turn register globals off
- *
- * @access private
- * @since 2.1.0
- * @return null Will return null if register_globals PHP directive was disabled
- */
-function wp_unregister_GLOBALS() {
-	if ( !ini_get('register_globals') )
-		return;
-
-	if ( isset($_REQUEST['GLOBALS']) )
-		die('GLOBALS overwrite attempt detected');
-
-	// Variables that shouldn't be unset
-	$noUnset = array('GLOBALS', '_GET', '_POST', '_COOKIE', '_REQUEST', '_SERVER', '_ENV', '_FILES', 'table_prefix');
-
-	$input = array_merge($_GET, $_POST, $_COOKIE, $_SERVER, $_ENV, $_FILES, isset($_SESSION) && is_array($_SESSION) ? $_SESSION : array());
-	foreach ( $input as $k => $v )
-		if ( !in_array($k, $noUnset) && isset($GLOBALS[$k]) ) {
-			$GLOBALS[$k] = NULL;
-			unset($GLOBALS[$k]);
-		}
-}
-
-wp_unregister_GLOBALS();
-
-unset( $wp_filter, $cache_lastcommentmodified, $cache_lastpostdate );
-
-/**
- * The $blog_id global, which you can change in the config allows you to create a simple
- * multiple blog installation using just one WordPress and changing $blog_id around.
- *
- * @global int $blog_id
- * @since 2.0.0
- */
-if ( ! isset($blog_id) )
-	$blog_id = 1;
-
-// Fix for IIS, which doesn't set REQUEST_URI
-if ( empty( $_SERVER['REQUEST_URI'] ) ) {
-
-	// IIS Mod-Rewrite
-	if (isset($_SERVER['HTTP_X_ORIGINAL_URL'])) {
-		$_SERVER['REQUEST_URI'] = $_SERVER['HTTP_X_ORIGINAL_URL'];
-	}
-	// IIS Isapi_Rewrite
-	else if (isset($_SERVER['HTTP_X_REWRITE_URL'])) {
-		$_SERVER['REQUEST_URI'] = $_SERVER['HTTP_X_REWRITE_URL'];
-	}
-	else
-	{
-		// Some IIS + PHP configurations puts the script-name in the path-info (No need to append it twice)
-		if ( $_SERVER['PATH_INFO'] == $_SERVER['SCRIPT_NAME'] )
-			$_SERVER['REQUEST_URI'] = $_SERVER['PATH_INFO'];
-		else
-			$_SERVER['REQUEST_URI'] = $_SERVER['SCRIPT_NAME'] . $_SERVER['PATH_INFO'];
-
-		// Append the query string if it exists and isn't null
-		if (isset($_SERVER['QUERY_STRING']) && !empty($_SERVER['QUERY_STRING'])) {
-			$_SERVER['REQUEST_URI'] .= '?' . $_SERVER['QUERY_STRING'];
-		}
-	}
-}
-
-// Fix for PHP as CGI hosts that set SCRIPT_FILENAME to something ending in php.cgi for all requests
-if ( isset($_SERVER['SCRIPT_FILENAME']) && ( strpos($_SERVER['SCRIPT_FILENAME'], 'php.cgi') == strlen($_SERVER['SCRIPT_FILENAME']) - 7 ) )
-	$_SERVER['SCRIPT_FILENAME'] = $_SERVER['PATH_TRANSLATED'];
-
-// Fix for Dreamhost and other PHP as CGI hosts
-if (strpos($_SERVER['SCRIPT_NAME'], 'php.cgi') !== false)
-	unset($_SERVER['PATH_INFO']);
-
-// Fix empty PHP_SELF
-$PHP_SELF = $_SERVER['PHP_SELF'];
-if ( empty($PHP_SELF) )
-	$_SERVER['PHP_SELF'] = $PHP_SELF = preg_replace("/(\?.*)?$/",'',$_SERVER["REQUEST_URI"]);
-
-if ( version_compare( '4.3', phpversion(), '>' ) ) {
-	die( 'Your server is running PHP version ' . phpversion() . ' but WordPress requires at least 4.3.' );
-}
-
-if ( !extension_loaded('mysql') && !file_exists(ABSPATH . 'wp-content/db.php') )
-	die( 'Your PHP installation appears to be missing the MySQL extension which is required by WordPress.' );
-
-/**
- * timer_start() - PHP 4 standard microtime start capture
- *
- * @access private
- * @since 0.71
- * @global int $timestart Seconds and Microseconds added together from when function is called
- * @return bool Always returns true
- */
-function timer_start() {
-	global $timestart;
-	$mtime = explode(' ', microtime() );
-	$mtime = $mtime[1] + $mtime[0];
-	$timestart = $mtime;
-	return true;
-}
-
-/**
- * timer_stop() - Return and/or display the time from the page start to when function is called.
- *
- * You can get the results and print them by doing:
- * <code>
- * $nTimePageTookToExecute = timer_stop();
- * echo $nTimePageTookToExecute;
- * </code>
- *
- * Or instead, you can do:
- * <code>
- * timer_stop(1);
- * </code>
- * which will do what the above does. If you need the result, you can assign it to a variable, but
- * most cases, you only need to echo it.
- *
- * @since 0.71
- * @global int $timestart Seconds and Microseconds added together from when timer_start() is called
- * @global int $timeend  Seconds and Microseconds added together from when function is called
- *
- * @param int $display Use '0' or null to not echo anything and 1 to echo the total time
- * @param int $precision The amount of digits from the right of the decimal to display. Default is 3.
- * @return float The "second.microsecond" finished time calculation
- */
-function timer_stop($display = 0, $precision = 3) { //if called like timer_stop(1), will echo $timetotal
-	global $timestart, $timeend;
-	$mtime = microtime();
-	$mtime = explode(' ',$mtime);
-	$mtime = $mtime[1] + $mtime[0];
-	$timeend = $mtime;
-	$timetotal = $timeend-$timestart;
-	$r = ( function_exists('number_format_i18n') ) ? number_format_i18n($timetotal, $precision) : number_format($timetotal, $precision);
-	if ( $display )
-		echo $r;
-	return $r;
-}
-timer_start();
-
-// Add define('WP_DEBUG',true); to wp-config.php to enable display of notices during development.
-if (defined('WP_DEBUG') and WP_DEBUG == true) {
-	error_reporting(E_ALL);
-} else {
-	error_reporting(E_ALL ^ E_NOTICE ^ E_USER_NOTICE);
-}
-
-// For an advanced caching plugin to use, static because you would only want one
-if ( defined('WP_CACHE') )
-	@include ABSPATH . 'wp-content/advanced-cache.php';
 
 /**
  * Stores the location of the WordPress directory of functions, classes, and core content.
  *
  * @since 1.0.0
  */
-define('WPINC', 'wp-includes');
+define( 'WPINC', 'wp-includes' );
 
-if ( !defined('LANGDIR') ) {
-	/**
-	 * Stores the location of the language directory. First looks for language folder in wp-content
-	 * and uses that folder if it exists. Or it uses the "languages" folder in WPINC.
-	 *
-	 * @since 2.1.0
-	 */
-	if ( file_exists(ABSPATH . 'wp-content/languages') && @is_dir(ABSPATH . 'wp-content/languages') )
-		define('LANGDIR', 'wp-content/languages'); // no leading slash, no trailing slash
-	else
-		define('LANGDIR', WPINC . '/languages'); // no leading slash, no trailing slash
-}
+// Include files required for initialization.
+require( ABSPATH . WPINC . '/load.php' );
+require( ABSPATH . WPINC . '/default-constants.php' );
+require_once( ABSPATH . WPINC . '/plugin.php' );
+
+/*
+ * These can't be directly globalized in version.php. When updating,
+ * we're including version.php from another installation and don't want
+ * these values to be overridden if already set.
+ */
+global $wp_version, $wp_db_version, $tinymce_version, $required_php_version, $required_mysql_version, $wp_local_package;
+require( ABSPATH . WPINC . '/version.php' );
 
 /**
- * Allows for the plugins directory to be moved from the default location.
+ * If not already configured, `$blog_id` will default to 1 in a single site
+ * configuration. In multisite, it will be overridden by default in ms-settings.php.
  *
- * This isn't used everywhere. Constant is not used in plugin_basename()
- * which might cause conflicts with changing this.
+ * @global int $blog_id
+ * @since 2.0.0
+ */
+global $blog_id;
+
+// Set initial default constants including WP_MEMORY_LIMIT, WP_MAX_MEMORY_LIMIT, WP_DEBUG, SCRIPT_DEBUG, WP_CONTENT_DIR and WP_CACHE.
+wp_initial_constants();
+
+// Check for the required PHP version and for the MySQL extension or a database drop-in.
+wp_check_php_mysql_versions();
+
+// Disable magic quotes at runtime. Magic quotes are added using wpdb later in wp-settings.php.
+@ini_set( 'magic_quotes_runtime', 0 );
+@ini_set( 'magic_quotes_sybase',  0 );
+
+// WordPress calculates offsets from UTC.
+date_default_timezone_set( 'UTC' );
+
+// Turn register_globals off.
+wp_unregister_GLOBALS();
+
+// Standardize $_SERVER variables across setups.
+wp_fix_server_vars();
+
+// Check if we have received a request due to missing favicon.ico
+wp_favicon_request();
+
+// Check if we're in maintenance mode.
+wp_maintenance();
+
+// Start loading timer.
+timer_start();
+
+// Check if we're in WP_DEBUG mode.
+wp_debug_mode();
+
+/**
+ * Filters whether to enable loading of the advanced-cache.php drop-in.
  *
- * @since 2.1
+ * This filter runs before it can be used by plugins. It is designed for non-web
+ * run-times. If false is returned, advanced-cache.php will never be loaded.
+ *
+ * @since 4.6.0
+ *
+ * @param bool $enable_advanced_cache Whether to enable loading advanced-cache.php (if present).
+ *                                    Default true.
  */
-if ( !defined('PLUGINDIR') )
-	define('PLUGINDIR', 'wp-content/plugins'); // no leading slash, no trailing slash
+if ( WP_CACHE && apply_filters( 'enable_loading_advanced_cache_dropin', true ) ) {
+	// For an advanced caching plugin to use. Uses a static drop-in because you would only want one.
+	WP_DEBUG ? include( WP_CONTENT_DIR . '/advanced-cache.php' ) : @include( WP_CONTENT_DIR . '/advanced-cache.php' );
 
-require (ABSPATH . WPINC . '/compat.php');
-require (ABSPATH . WPINC . '/functions.php');
-require (ABSPATH . WPINC . '/classes.php');
-
-require_wp_db();
-
-if ( !empty($wpdb->error) )
-	dead_db();
-
-$prefix = $wpdb->set_prefix($table_prefix);
-
-if ( is_wp_error($prefix) )
-	wp_die('<strong>ERROR</strong>: <code>$table_prefix</code> in <code>wp-config.php</code> can only contain numbers, letters, and underscores.');
-
-if ( file_exists(ABSPATH . 'wp-content/object-cache.php') )
-	require_once (ABSPATH . 'wp-content/object-cache.php');
-else
-	require_once (ABSPATH . WPINC . '/cache.php');
-
-wp_cache_init();
-
-require (ABSPATH . WPINC . '/plugin.php');
-require (ABSPATH . WPINC . '/default-filters.php');
-include_once(ABSPATH . WPINC . '/streams.php');
-include_once(ABSPATH . WPINC . '/gettext.php');
-require_once (ABSPATH . WPINC . '/l10n.php');
-
-if ( !is_blog_installed() && (strpos($_SERVER['PHP_SELF'], 'install.php') === false && !defined('WP_INSTALLING')) ) {
-	if ( defined('WP_SITEURL') )
-		$link = WP_SITEURL . '/wp-admin/install.php';
-	elseif (strpos($_SERVER['PHP_SELF'], 'wp-admin') !== false)
-		$link = preg_replace('|/wp-admin/?.*?$|', '/', $_SERVER['PHP_SELF']) . 'wp-admin/install.php';
-	else
-		$link = preg_replace('|/[^/]+?$|', '/', $_SERVER['PHP_SELF']) . 'wp-admin/install.php';
-	require_once(ABSPATH . WPINC . '/kses.php');
-	require_once(ABSPATH . WPINC . '/pluggable.php');
-	wp_redirect($link);
-	die(); // have to die here ~ Mark
-}
-
-require (ABSPATH . WPINC . '/formatting.php');
-require (ABSPATH . WPINC . '/capabilities.php');
-require (ABSPATH . WPINC . '/query.php');
-require (ABSPATH . WPINC . '/theme.php');
-require (ABSPATH . WPINC . '/user.php');
-require (ABSPATH . WPINC . '/general-template.php');
-require (ABSPATH . WPINC . '/link-template.php');
-require (ABSPATH . WPINC . '/author-template.php');
-require (ABSPATH . WPINC . '/post.php');
-require (ABSPATH . WPINC . '/post-template.php');
-require (ABSPATH . WPINC . '/category.php');
-require (ABSPATH . WPINC . '/category-template.php');
-require (ABSPATH . WPINC . '/comment.php');
-require (ABSPATH . WPINC . '/comment-template.php');
-require (ABSPATH . WPINC . '/rewrite.php');
-require (ABSPATH . WPINC . '/feed.php');
-require (ABSPATH . WPINC . '/bookmark.php');
-require (ABSPATH . WPINC . '/bookmark-template.php');
-require (ABSPATH . WPINC . '/kses.php');
-require (ABSPATH . WPINC . '/cron.php');
-require (ABSPATH . WPINC . '/version.php');
-require (ABSPATH . WPINC . '/deprecated.php');
-require (ABSPATH . WPINC . '/script-loader.php');
-require (ABSPATH . WPINC . '/taxonomy.php');
-require (ABSPATH . WPINC . '/update.php');
-require (ABSPATH . WPINC . '/canonical.php');
-require (ABSPATH . WPINC . '/shortcodes.php');
-require (ABSPATH . WPINC . '/media.php');
-
-if (strpos($_SERVER['PHP_SELF'], 'install.php') === false) {
-	// Used to guarantee unique hash cookies
-	$cookiehash = md5(get_option('siteurl'));
-	/**
-	 * Used to guarantee unique hash cookies
-	 * @since 1.5
-	 */
-	define('COOKIEHASH', $cookiehash);
-}
-
-/**
- * Should be exactly the same as the default value of SECRET_KEY in wp-config-sample.php
- * @since 2.5
- */
-$wp_default_secret_key = 'put your unique phrase here';
-
-/**
- * It is possible to define this in wp-config.php
- * @since 2.0.0
- */
-if ( !defined('USER_COOKIE') )
-	define('USER_COOKIE', 'wordpressuser_' . COOKIEHASH);
-
-/**
- * It is possible to define this in wp-config.php
- * @since 2.0.0
- */
-if ( !defined('PASS_COOKIE') )
-	define('PASS_COOKIE', 'wordpresspass_' . COOKIEHASH);
-
-/**
- * It is possible to define this in wp-config.php
- * @since 2.5
- */
-if ( !defined('AUTH_COOKIE') )
-	define('AUTH_COOKIE', 'wordpress_' . COOKIEHASH);
-
-/**
- * It is possible to define this in wp-config.php
- * @since 2.3.0
- */
-if ( !defined('TEST_COOKIE') )
-	define('TEST_COOKIE', 'wordpress_test_cookie');
-
-/**
- * It is possible to define this in wp-config.php
- * @since 1.2.0
- */
-if ( !defined('COOKIEPATH') )
-	define('COOKIEPATH', preg_replace('|https?://[^/]+|i', '', get_option('home') . '/' ) );
-
-/**
- * It is possible to define this in wp-config.php
- * @since 1.5.0
- */
-if ( !defined('SITECOOKIEPATH') )
-	define('SITECOOKIEPATH', preg_replace('|https?://[^/]+|i', '', get_option('siteurl') . '/' ) );
-
-/**
- * It is possible to define this in wp-config.php
- * @since 2.0.0
- */
-if ( !defined('COOKIE_DOMAIN') )
-	define('COOKIE_DOMAIN', false);
-
-require (ABSPATH . WPINC . '/vars.php');
-
-// Check for hacks file if the option is enabled
-if (get_option('hack_file')) {
-	if (file_exists(ABSPATH . 'my-hacks.php'))
-		require(ABSPATH . 'my-hacks.php');
-}
-
-if ( get_option('active_plugins') ) {
-	$current_plugins = get_option('active_plugins');
-	if ( is_array($current_plugins) ) {
-		foreach ($current_plugins as $plugin) {
-			if ('' != $plugin && file_exists(ABSPATH . PLUGINDIR . '/' . $plugin))
-				include_once(ABSPATH . PLUGINDIR . '/' . $plugin);
-		}
+	// Re-initialize any hooks added manually by advanced-cache.php
+	if ( $wp_filter ) {
+		$wp_filter = WP_Hook::build_preinitialized_hooks( $wp_filter );
 	}
 }
 
-require (ABSPATH . WPINC . '/pluggable.php');
+// Define WP_LANG_DIR if not set.
+wp_set_lang_dir();
 
-/*
- * In most cases the default internal encoding is latin1, which is of no use,
- * since we want to use the mb_ functions for utf-8 strings
- */
-if (function_exists('mb_internal_encoding')) {
-	if (!@mb_internal_encoding(get_option('blog_charset')))
-		mb_internal_encoding('UTF-8');
+// Load early WordPress files.
+require( ABSPATH . WPINC . '/compat.php' );
+require( ABSPATH . WPINC . '/class-wp-list-util.php' );
+require( ABSPATH . WPINC . '/functions.php' );
+require( ABSPATH . WPINC . '/class-wp-matchesmapregex.php' );
+require( ABSPATH . WPINC . '/class-wp.php' );
+require( ABSPATH . WPINC . '/class-wp-error.php' );
+require( ABSPATH . WPINC . '/pomo/mo.php' );
+
+// Include the wpdb class and, if present, a db.php database drop-in.
+global $wpdb;
+require_wp_db();
+
+// Set the database table prefix and the format specifiers for database table columns.
+$GLOBALS['table_prefix'] = $table_prefix;
+wp_set_wpdb_vars();
+
+// Start the WordPress object cache, or an external object cache if the drop-in is present.
+wp_start_object_cache();
+
+// Attach the default filters.
+require( ABSPATH . WPINC . '/default-filters.php' );
+
+// Initialize multisite if enabled.
+if ( is_multisite() ) {
+	require( ABSPATH . WPINC . '/class-wp-site-query.php' );
+	require( ABSPATH . WPINC . '/class-wp-network-query.php' );
+	require( ABSPATH . WPINC . '/ms-blogs.php' );
+	require( ABSPATH . WPINC . '/ms-settings.php' );
+} elseif ( ! defined( 'MULTISITE' ) ) {
+	define( 'MULTISITE', false );
 }
 
+register_shutdown_function( 'shutdown_action_hook' );
 
-if ( defined('WP_CACHE') && function_exists('wp_cache_postload') )
+// Stop most of WordPress from being loaded if we just want the basics.
+if ( SHORTINIT )
+	return false;
+
+// Load the L10n library.
+require_once( ABSPATH . WPINC . '/l10n.php' );
+require_once( ABSPATH . WPINC . '/class-wp-locale.php' );
+require_once( ABSPATH . WPINC . '/class-wp-locale-switcher.php' );
+
+// Run the installer if WordPress is not installed.
+wp_not_installed();
+
+// Load most of WordPress.
+require( ABSPATH . WPINC . '/class-wp-walker.php' );
+require( ABSPATH . WPINC . '/class-wp-ajax-response.php' );
+require( ABSPATH . WPINC . '/formatting.php' );
+require( ABSPATH . WPINC . '/capabilities.php' );
+require( ABSPATH . WPINC . '/class-wp-roles.php' );
+require( ABSPATH . WPINC . '/class-wp-role.php' );
+require( ABSPATH . WPINC . '/class-wp-user.php' );
+require( ABSPATH . WPINC . '/class-wp-query.php' );
+require( ABSPATH . WPINC . '/query.php' );
+require( ABSPATH . WPINC . '/date.php' );
+require( ABSPATH . WPINC . '/theme.php' );
+require( ABSPATH . WPINC . '/class-wp-theme.php' );
+require( ABSPATH . WPINC . '/template.php' );
+require( ABSPATH . WPINC . '/user.php' );
+require( ABSPATH . WPINC . '/class-wp-user-query.php' );
+require( ABSPATH . WPINC . '/class-wp-session-tokens.php' );
+require( ABSPATH . WPINC . '/class-wp-user-meta-session-tokens.php' );
+require( ABSPATH . WPINC . '/meta.php' );
+require( ABSPATH . WPINC . '/class-wp-meta-query.php' );
+require( ABSPATH . WPINC . '/class-wp-metadata-lazyloader.php' );
+require( ABSPATH . WPINC . '/general-template.php' );
+require( ABSPATH . WPINC . '/link-template.php' );
+require( ABSPATH . WPINC . '/author-template.php' );
+require( ABSPATH . WPINC . '/post.php' );
+require( ABSPATH . WPINC . '/class-walker-page.php' );
+require( ABSPATH . WPINC . '/class-walker-page-dropdown.php' );
+require( ABSPATH . WPINC . '/class-wp-post-type.php' );
+require( ABSPATH . WPINC . '/class-wp-post.php' );
+require( ABSPATH . WPINC . '/post-template.php' );
+require( ABSPATH . WPINC . '/revision.php' );
+require( ABSPATH . WPINC . '/post-formats.php' );
+require( ABSPATH . WPINC . '/post-thumbnail-template.php' );
+require( ABSPATH . WPINC . '/category.php' );
+require( ABSPATH . WPINC . '/class-walker-category.php' );
+require( ABSPATH . WPINC . '/class-walker-category-dropdown.php' );
+require( ABSPATH . WPINC . '/category-template.php' );
+require( ABSPATH . WPINC . '/comment.php' );
+require( ABSPATH . WPINC . '/class-wp-comment.php' );
+require( ABSPATH . WPINC . '/class-wp-comment-query.php' );
+require( ABSPATH . WPINC . '/class-walker-comment.php' );
+require( ABSPATH . WPINC . '/comment-template.php' );
+require( ABSPATH . WPINC . '/rewrite.php' );
+require( ABSPATH . WPINC . '/class-wp-rewrite.php' );
+require( ABSPATH . WPINC . '/feed.php' );
+require( ABSPATH . WPINC . '/bookmark.php' );
+require( ABSPATH . WPINC . '/bookmark-template.php' );
+require( ABSPATH . WPINC . '/kses.php' );
+require( ABSPATH . WPINC . '/cron.php' );
+require( ABSPATH . WPINC . '/deprecated.php' );
+require( ABSPATH . WPINC . '/script-loader.php' );
+require( ABSPATH . WPINC . '/taxonomy.php' );
+require( ABSPATH . WPINC . '/class-wp-taxonomy.php' );
+require( ABSPATH . WPINC . '/class-wp-term.php' );
+require( ABSPATH . WPINC . '/class-wp-term-query.php' );
+require( ABSPATH . WPINC . '/class-wp-tax-query.php' );
+require( ABSPATH . WPINC . '/update.php' );
+require( ABSPATH . WPINC . '/canonical.php' );
+require( ABSPATH . WPINC . '/shortcodes.php' );
+require( ABSPATH . WPINC . '/embed.php' );
+require( ABSPATH . WPINC . '/class-wp-embed.php' );
+require( ABSPATH . WPINC . '/class-oembed.php' );
+require( ABSPATH . WPINC . '/class-wp-oembed-controller.php' );
+require( ABSPATH . WPINC . '/media.php' );
+require( ABSPATH . WPINC . '/http.php' );
+require( ABSPATH . WPINC . '/class-http.php' );
+require( ABSPATH . WPINC . '/class-wp-http-streams.php' );
+require( ABSPATH . WPINC . '/class-wp-http-curl.php' );
+require( ABSPATH . WPINC . '/class-wp-http-proxy.php' );
+require( ABSPATH . WPINC . '/class-wp-http-cookie.php' );
+require( ABSPATH . WPINC . '/class-wp-http-encoding.php' );
+require( ABSPATH . WPINC . '/class-wp-http-response.php' );
+require( ABSPATH . WPINC . '/class-wp-http-requests-response.php' );
+require( ABSPATH . WPINC . '/class-wp-http-requests-hooks.php' );
+require( ABSPATH . WPINC . '/widgets.php' );
+require( ABSPATH . WPINC . '/class-wp-widget.php' );
+require( ABSPATH . WPINC . '/class-wp-widget-factory.php' );
+require( ABSPATH . WPINC . '/nav-menu.php' );
+require( ABSPATH . WPINC . '/nav-menu-template.php' );
+require( ABSPATH . WPINC . '/admin-bar.php' );
+require( ABSPATH . WPINC . '/rest-api.php' );
+require( ABSPATH . WPINC . '/rest-api/class-wp-rest-server.php' );
+require( ABSPATH . WPINC . '/rest-api/class-wp-rest-response.php' );
+require( ABSPATH . WPINC . '/rest-api/class-wp-rest-request.php' );
+require( ABSPATH . WPINC . '/rest-api/endpoints/class-wp-rest-controller.php' );
+require( ABSPATH . WPINC . '/rest-api/endpoints/class-wp-rest-posts-controller.php' );
+require( ABSPATH . WPINC . '/rest-api/endpoints/class-wp-rest-attachments-controller.php' );
+require( ABSPATH . WPINC . '/rest-api/endpoints/class-wp-rest-post-types-controller.php' );
+require( ABSPATH . WPINC . '/rest-api/endpoints/class-wp-rest-post-statuses-controller.php' );
+require( ABSPATH . WPINC . '/rest-api/endpoints/class-wp-rest-revisions-controller.php' );
+require( ABSPATH . WPINC . '/rest-api/endpoints/class-wp-rest-autosaves-controller.php' );
+require( ABSPATH . WPINC . '/rest-api/endpoints/class-wp-rest-taxonomies-controller.php' );
+require( ABSPATH . WPINC . '/rest-api/endpoints/class-wp-rest-terms-controller.php' );
+require( ABSPATH . WPINC . '/rest-api/endpoints/class-wp-rest-users-controller.php' );
+require( ABSPATH . WPINC . '/rest-api/endpoints/class-wp-rest-comments-controller.php' );
+require( ABSPATH . WPINC . '/rest-api/endpoints/class-wp-rest-search-controller.php' );
+require( ABSPATH . WPINC . '/rest-api/endpoints/class-wp-rest-blocks-controller.php' );
+require( ABSPATH . WPINC . '/rest-api/endpoints/class-wp-rest-block-renderer-controller.php' );
+require( ABSPATH . WPINC . '/rest-api/endpoints/class-wp-rest-settings-controller.php' );
+require( ABSPATH . WPINC . '/rest-api/endpoints/class-wp-rest-themes-controller.php' );
+require( ABSPATH . WPINC . '/rest-api/fields/class-wp-rest-meta-fields.php' );
+require( ABSPATH . WPINC . '/rest-api/fields/class-wp-rest-comment-meta-fields.php' );
+require( ABSPATH . WPINC . '/rest-api/fields/class-wp-rest-post-meta-fields.php' );
+require( ABSPATH . WPINC . '/rest-api/fields/class-wp-rest-term-meta-fields.php' );
+require( ABSPATH . WPINC . '/rest-api/fields/class-wp-rest-user-meta-fields.php' );
+require( ABSPATH . WPINC . '/rest-api/search/class-wp-rest-search-handler.php' );
+require( ABSPATH . WPINC . '/rest-api/search/class-wp-rest-post-search-handler.php' );
+require( ABSPATH . WPINC . '/class-wp-block-type.php' );
+require( ABSPATH . WPINC . '/class-wp-block-type-registry.php' );
+require( ABSPATH . WPINC . '/class-wp-block-parser.php' );
+require( ABSPATH . WPINC . '/blocks.php' );
+require( ABSPATH . WPINC . '/blocks/archives.php' );
+require( ABSPATH . WPINC . '/blocks/block.php' );
+require( ABSPATH . WPINC . '/blocks/categories.php' );
+require( ABSPATH . WPINC . '/blocks/latest-comments.php' );
+require( ABSPATH . WPINC . '/blocks/latest-posts.php' );
+require( ABSPATH . WPINC . '/blocks/shortcode.php' );
+
+$GLOBALS['wp_embed'] = new WP_Embed();
+
+// Load multisite-specific files.
+if ( is_multisite() ) {
+	require( ABSPATH . WPINC . '/ms-functions.php' );
+	require( ABSPATH . WPINC . '/ms-default-filters.php' );
+	require( ABSPATH . WPINC . '/ms-deprecated.php' );
+}
+
+// Define constants that rely on the API to obtain the default value.
+// Define must-use plugin directory constants, which may be overridden in the sunrise.php drop-in.
+wp_plugin_directory_constants();
+
+$GLOBALS['wp_plugin_paths'] = array();
+
+// Load must-use plugins.
+foreach ( wp_get_mu_plugins() as $mu_plugin ) {
+	include_once( $mu_plugin );
+}
+unset( $mu_plugin );
+
+// Load network activated plugins.
+if ( is_multisite() ) {
+	foreach ( wp_get_active_network_plugins() as $network_plugin ) {
+		wp_register_plugin_realpath( $network_plugin );
+		include_once( $network_plugin );
+	}
+	unset( $network_plugin );
+}
+
+/**
+ * Fires once all must-use and network-activated plugins have loaded.
+ *
+ * @since 2.8.0
+ */
+do_action( 'muplugins_loaded' );
+
+if ( is_multisite() )
+	ms_cookie_constants(  );
+
+// Define constants after multisite is loaded.
+wp_cookie_constants();
+
+// Define and enforce our SSL constants
+wp_ssl_constants();
+
+// Create common globals.
+require( ABSPATH . WPINC . '/vars.php' );
+
+// Make taxonomies and posts available to plugins and themes.
+// @plugin authors: warning: these get registered again on the init hook.
+create_initial_taxonomies();
+create_initial_post_types();
+
+wp_start_scraping_edited_file_errors();
+
+// Register the default theme directory root
+register_theme_directory( get_theme_root() );
+
+// Load active plugins.
+foreach ( wp_get_active_and_valid_plugins() as $plugin ) {
+	wp_register_plugin_realpath( $plugin );
+	include_once( $plugin );
+}
+unset( $plugin );
+
+// Load pluggable functions.
+require( ABSPATH . WPINC . '/pluggable.php' );
+require( ABSPATH . WPINC . '/pluggable-deprecated.php' );
+
+// Set internal encoding.
+wp_set_internal_encoding();
+
+// Run wp_cache_postload() if object cache is enabled and the function exists.
+if ( WP_CACHE && function_exists( 'wp_cache_postload' ) )
 	wp_cache_postload();
 
-do_action('plugins_loaded');
+/**
+ * Fires once activated plugins have loaded.
+ *
+ * Pluggable functions are also available at this point in the loading order.
+ *
+ * @since 1.5.0
+ */
+do_action( 'plugins_loaded' );
 
-// If already slashed, strip.
-if ( get_magic_quotes_gpc() ) {
-	$_GET    = stripslashes_deep($_GET   );
-	$_POST   = stripslashes_deep($_POST  );
-	$_COOKIE = stripslashes_deep($_COOKIE);
-}
+// Define constants which affect functionality if not already defined.
+wp_functionality_constants();
 
-// Escape with wpdb.
-$_GET    = add_magic_quotes($_GET   );
-$_POST   = add_magic_quotes($_POST  );
-$_COOKIE = add_magic_quotes($_COOKIE);
-$_SERVER = add_magic_quotes($_SERVER);
+// Add magic quotes and set up $_REQUEST ( $_GET + $_POST )
+wp_magic_quotes();
 
-do_action('sanitize_comment_cookies');
+/**
+ * Fires when comment cookies are sanitized.
+ *
+ * @since 2.0.11
+ */
+do_action( 'sanitize_comment_cookies' );
 
 /**
  * WordPress Query object
- * @global object $wp_the_query
+ * @global WP_Query $wp_the_query
  * @since 2.0.0
  */
-$wp_the_query =& new WP_Query();
+$GLOBALS['wp_the_query'] = new WP_Query();
 
 /**
  * Holds the reference to @see $wp_the_query
  * Use this global for WordPress queries
- * @global object $wp_query
+ * @global WP_Query $wp_query
  * @since 1.5.0
  */
-$wp_query     =& $wp_the_query;
+$GLOBALS['wp_query'] = $GLOBALS['wp_the_query'];
 
 /**
  * Holds the WordPress Rewrite object for creating pretty URLs
- * @global object $wp_rewrite
+ * @global WP_Rewrite $wp_rewrite
  * @since 1.5.0
  */
-$wp_rewrite   =& new WP_Rewrite();
+$GLOBALS['wp_rewrite'] = new WP_Rewrite();
 
 /**
  * WordPress Object
- * @global object $wp
+ * @global WP $wp
  * @since 2.0.0
  */
-$wp           =& new WP();
-
-
-/**
- * Web Path to the current active template directory
- * @since 1.5
- */
-define('TEMPLATEPATH', get_template_directory());
+$GLOBALS['wp'] = new WP();
 
 /**
- * Web Path to the current active template stylesheet directory
- * @since 2.1
+ * WordPress Widget Factory Object
+ * @global WP_Widget_Factory $wp_widget_factory
+ * @since 2.8.0
  */
-define('STYLESHEETPATH', get_stylesheet_directory());
+$GLOBALS['wp_widget_factory'] = new WP_Widget_Factory();
+
+/**
+ * WordPress User Roles
+ * @global WP_Roles $wp_roles
+ * @since 2.0.0
+ */
+$GLOBALS['wp_roles'] = new WP_Roles();
+
+/**
+ * Fires before the theme is loaded.
+ *
+ * @since 2.6.0
+ */
+do_action( 'setup_theme' );
+
+// Define the template related constants.
+wp_templating_constants(  );
 
 // Load the default text localization domain.
 load_default_textdomain();
 
-/**
- * The locale of the blog
- * @since 1.5.0
- */
 $locale = get_locale();
-$locale_file = ABSPATH . LANGDIR . "/$locale.php";
-if ( is_readable($locale_file) )
-	require_once($locale_file);
-
-// Pull in locale data after loading text domain.
-require_once(ABSPATH . WPINC . '/locale.php');
+$locale_file = WP_LANG_DIR . "/$locale.php";
+if ( ( 0 === validate_file( $locale ) ) && is_readable( $locale_file ) )
+	require( $locale_file );
+unset( $locale_file );
 
 /**
  * WordPress Locale object for loading locale domain date and various strings.
- * @global object $wp_locale
+ * @global WP_Locale $wp_locale
  * @since 2.1.0
  */
-$wp_locale =& new WP_Locale();
-
-// Load functions for active theme.
-if ( TEMPLATEPATH !== STYLESHEETPATH && file_exists(STYLESHEETPATH . '/functions.php') )
-	include(STYLESHEETPATH . '/functions.php');
-if ( file_exists(TEMPLATEPATH . '/functions.php') )
-	include(TEMPLATEPATH . '/functions.php');
+$GLOBALS['wp_locale'] = new WP_Locale();
 
 /**
- * shutdown_action_hook() - Runs just before PHP shuts down execution.
+ *  WordPress Locale Switcher object for switching locales.
  *
- * @access private
- * @since 1.2
+ * @since 4.7.0
+ *
+ * @global WP_Locale_Switcher $wp_locale_switcher WordPress locale switcher object.
  */
-function shutdown_action_hook() {
-	do_action('shutdown');
-	wp_cache_close();
+$GLOBALS['wp_locale_switcher'] = new WP_Locale_Switcher();
+$GLOBALS['wp_locale_switcher']->init();
+
+// Load the functions for the active theme, for both parent and child theme if applicable.
+if ( ! wp_installing() || 'wp-activate.php' === $pagenow ) {
+	if ( TEMPLATEPATH !== STYLESHEETPATH && file_exists( STYLESHEETPATH . '/functions.php' ) )
+		include( STYLESHEETPATH . '/functions.php' );
+	if ( file_exists( TEMPLATEPATH . '/functions.php' ) )
+		include( TEMPLATEPATH . '/functions.php' );
 }
-register_shutdown_function('shutdown_action_hook');
 
-$wp->init();  // Sets up current user.
+/**
+ * Fires after the theme is loaded.
+ *
+ * @since 3.0.0
+ */
+do_action( 'after_setup_theme' );
 
-// Everything is loaded and initialized.
-do_action('init');
+// Set up current user.
+$GLOBALS['wp']->init();
 
-?>
+/**
+ * Fires after WordPress has finished loading but before any headers are sent.
+ *
+ * Most of WP is loaded at this stage, and the user is authenticated. WP continues
+ * to load on the {@see 'init'} hook that follows (e.g. widgets), and many plugins instantiate
+ * themselves on it for all sorts of reasons (e.g. they need a user, a taxonomy, etc.).
+ *
+ * If you wish to plug an action once WP is loaded, use the {@see 'wp_loaded'} hook below.
+ *
+ * @since 1.5.0
+ */
+do_action( 'init' );
+
+// Check site status
+if ( is_multisite() ) {
+	if ( true !== ( $file = ms_site_check() ) ) {
+		require( $file );
+		die();
+	}
+	unset($file);
+}
+
+/**
+ * This hook is fired once WP, all plugins, and the theme are fully loaded and instantiated.
+ *
+ * Ajax requests should use wp-admin/admin-ajax.php. admin-ajax.php can handle requests for
+ * users not logged in.
+ *
+ * @link https://codex.wordpress.org/AJAX_in_Plugins
+ *
+ * @since 3.0.0
+ */
+do_action( 'wp_loaded' );
